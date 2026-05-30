@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+.env.local
+ml/data/*.csv
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+.vercel
+dashboard/.env
+dashboard/.env.local
+
+# PlatformIO / C++
+.pio/
+.clang-format
+
+# OS
+.DS_Store
+Thumbs.db
