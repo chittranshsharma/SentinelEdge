@@ -192,47 +192,32 @@ static void setupTFLite() {
 // ─────────────────────────────────────────────────────────────────────────────
 static void setupSensors() {
   // MPU6050 — I2C
-  // I2C bus recovery: clock out any stuck transaction from a previous brownout.
-  // Toggle SCL 9 times to release any slave holding SDA low.
-  pinMode(21, OUTPUT); // SDA
-  pinMode(22, OUTPUT); // SCL
-  digitalWrite(21, HIGH);
-  for (int i = 0; i < 9; i++) {
-    digitalWrite(22, LOW);  delayMicroseconds(5);
-    digitalWrite(22, HIGH); delayMicroseconds(5);
-  }
-  // STOP condition: SDA low→high while SCL high
-  digitalWrite(21, LOW);  delayMicroseconds(5);
-  digitalWrite(22, HIGH); delayMicroseconds(5);
-  digitalWrite(21, HIGH); delayMicroseconds(5);
-
+  // NOTE: Do NOT manually toggle SDA/SCL as GPIO before Wire.begin().
+  // Doing so corrupts the ESP32 Wire bus state and causes subsequent
+  // configuration writes (e.g. setSleepEnabled) to fail silently.
   Wire.begin(21, 22); // SDA=21, SCL=22
-  delay(100);
+  delay(50);
 
-  // Hard reset MPU6050 via PWR_MGMT_1 register (bit 7 = DEVICE_RESET)
-  mpu.initialize();
-  mpu.reset();          // sets DEVICE_RESET bit
-  delay(100);           // datasheet: 100ms for reset to complete
-  mpu.initialize();     // re-initialize after reset
+  mpu.initialize(); // sets clock source, disables sleep, configures DLPF
 
   if (!mpu.testConnection()) {
     Serial.println("[MPU6050] ERROR: Not found on I2C!");
     while (true) delay(1000);
   }
+
   // Set sensitivity: ±2g accel, ±250°/s gyro (highest precision)
   mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
-  mpu.setSleepEnabled(false);
 
-  // Verify sensor is live by checking a raw reading changes
-  int16_t ax0, ay0, az0, gx0, gy0, gz0;
-  mpu.getMotion6(&ax0, &ay0, &az0, &gx0, &gy0, &gz0);
-  delay(20);
-  int16_t ax1, ay1, az1, gx1, gy1, gz1;
-  mpu.getMotion6(&ax1, &ay1, &az1, &gx1, &gy1, &gz1);
-  if (ax0 == ax1 && ay0 == ay1 && az0 == az1) {
-    Serial.println("[MPU6050] WARNING: sensor reads are identical — may be frozen!");
-  }
+  // Explicitly clear PWR_MGMT_1 via direct register write to guarantee
+  // the sensor is awake. mpu.initialize() sets clock=PLL+GyroX and
+  // sleep=0, but this direct write is a belt-and-suspenders check.
+  Wire.beginTransmission(0x68);
+  Wire.write(0x6B); // PWR_MGMT_1 register
+  Wire.write(0x01); // clock=PLL X-gyro, sleep=0, cycle=0
+  Wire.endTransmission();
+  delay(10);
+
   Serial.println("[MPU6050] OK — ±2g / ±250dps");
 
   // DHT11 — temperature/humidity
@@ -500,6 +485,26 @@ void loop() {
     // Read MPU6050 raw 16-bit values
     int16_t rawAx, rawAy, rawAz, rawGx, rawGy, rawGz;
     mpu.getMotion6(&rawAx, &rawAy, &rawAz, &rawGx, &rawGy, &rawGz);
+
+    // Safety net: if MPU6050 slips back into sleep (e.g. due to WiFi RF glitch
+    // corrupting an I2C write), auto-wake it. Checked every 500 samples (5s).
+    static uint32_t _sampleCount = 0;
+    if ((_sampleCount++ % 500) == 0) {
+      Wire.beginTransmission(0x68);
+      Wire.write(0x6B); // PWR_MGMT_1
+      Wire.endTransmission(false);
+      Wire.requestFrom(0x68, 1);
+      if (Wire.available()) {
+        uint8_t pwr = Wire.read();
+        if ((pwr >> 6) & 0x01) { // SLEEP bit set
+          Wire.beginTransmission(0x68);
+          Wire.write(0x6B);
+          Wire.write(0x01); // wake, PLL X-gyro clock
+          Wire.endTransmission();
+          Serial.println("[MPU6050] SLEEP detected — auto-woke");
+        }
+      }
+    }
 
     // Convert to physical units (matching Python training data units)
     // Accel: ±2g → 16384 LSB/g → multiply by g/16384 = 9.81/16384
