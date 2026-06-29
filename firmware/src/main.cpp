@@ -33,6 +33,7 @@
 #include "TensorFlowLite_ESP32.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "model/fault_model.h"
 #include "model/model_settings.h"
@@ -108,17 +109,44 @@ static unsigned long lastInferenceUs     = 0;
 // ─────────────────────────────────────────────────────────────────────────────
 static void setupTFLite() {
     Serial.println("[TFLite] Initializing...");
+    Serial.println("[TFLite] STEP 1");
 
     tflModel = tflite::GetModel(fault_model_data);
-    if (tflModel->version() != TFLITE_SCHEMA_VERSION) {
-        Serial.printf("[TFLite] ERROR: Model schema %d, expected %d\n",
-            tflModel->version(), TFLITE_SCHEMA_VERSION);
-        while (true) delay(1000);
+
+    Serial.println("[TFLite] STEP 2");
+
+    Serial.printf("[TFLite] Model ptr = %p\n", tflModel);
+
+    Serial.println("[TFLite] STEP 3");
+
+    int modelVersion = tflModel->version();
+
+    Serial.println("[TFLite] STEP 4");
+
+    Serial.printf("[TFLite] Version = %d\n", modelVersion);
+
+    if (modelVersion != TFLITE_SCHEMA_VERSION) {
+        Serial.printf(
+            "[TFLite] ERROR: Model schema %d expected %d\n",
+            modelVersion,
+            TFLITE_SCHEMA_VERSION
+        );
+        while(true);
     }
+
+    Serial.println("[TFLite] STEP 5");
+
+    static tflite::MicroErrorReporter staticErrorReporter;
 
     // Use static placement (no heap) for interpreter
     static tflite::MicroInterpreter staticInterpreter(
-        tflModel, tflResolver, tensorArena, kTensorArenaSize
+        tflModel,
+        tflResolver,
+        tensorArena,
+        kTensorArenaSize,
+        &staticErrorReporter,
+        nullptr,
+        nullptr
     );
     tflInterp = &staticInterpreter;
 
@@ -319,13 +347,13 @@ static void runInference() {
     );
 
     // 8. Publish anomaly if fault detected with sufficient confidence
-    if (bestClass != kClassNormal && confidence >= kConfidenceThreshold) {
+    if (bestClass != kClassStationary && confidence >= kConfidenceThreshold) {
         readDHT();
         readMQ5();
         readGPS();
         snapshot = buildSnapshot();  // refresh with latest sensor reads
 
-        publishAnomaly(bestClass, confidence, lastTotalLatencyMs, snapshot);
+        // publishAnomaly(bestClass, confidence, lastTotalLatencyMs, snapshot);
     }
 }
 
@@ -376,8 +404,8 @@ void setup() {
 #ifdef ENV_INFERENCE
     initBuffers();
     setupTFLite();
-    mqttInit(WIFI_SSID, WIFI_PASSWORD, MQTT_HOST, MQTT_PORT, DEVICE_ID);
-    Serial.println("\n[SentinelEdge] Inference mode — sampling at 100Hz");
+    // mqttInit(WIFI_SSID, WIFI_PASSWORD, MQTT_HOST, MQTT_PORT, DEVICE_ID);
+    Serial.println("\n[SentinelEdge] Inference mode (WiFi/MQTT bypassed) — sampling at 100Hz");
 #endif
 
 #ifdef ENV_COLLECTION
@@ -442,11 +470,11 @@ void loop() {
         readDHT();
         readMQ5();
         SensorSnapshot snapshot = buildSnapshot();
-        publishHeartbeat(snapshot);
+        // publishHeartbeat(snapshot);
     }
 
     // ── MQTT keepalive ─────────────────────────────────────────────────────
-    mqttLoop();
+    // mqttLoop();
 
     // ── Drift check mode (send 'd' via serial to trigger) ─────────────────
 #ifdef DRIFT_CHECK_ENABLED

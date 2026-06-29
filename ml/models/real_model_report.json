@@ -1,0 +1,96 @@
+{
+  "generated_by": "ml/09_convert_real_model.py",
+  "model_file": "fault_model.tflite",
+  "model_size_bytes": 6152,
+  "model_size_kb": 6.01,
+  "input_shape": [
+    1,
+    42
+  ],
+  "output_shape": [
+    1,
+    4
+  ],
+  "input_dtype": "int8",
+  "output_dtype": "int8",
+  "input_scale": 0.04123847931623459,
+  "input_zero_point": -16,
+  "output_scale": 0.00390625,
+  "output_zero_point": -128,
+  "classes": [
+    "stationary",
+    "movement",
+    "rotation",
+    "shake"
+  ],
+  "feature_count": 42,
+  "window_size": 200,
+  "step_size": 100,
+  "sample_rate_hz": 100,
+  "confidence_threshold": 0.75,
+  "architecture": {
+    "layers": [
+      {
+        "name": "input",
+        "units": 42,
+        "activation": "none"
+      },
+      {
+        "name": "dense_1",
+        "units": 32,
+        "activation": "relu"
+      },
+      {
+        "name": "dense_2",
+        "units": 16,
+        "activation": "relu"
+      },
+      {
+        "name": "output",
+        "units": 4,
+        "activation": "softmax"
+      }
+    ],
+    "total_params": 1972
+  },
+  "metrics": {
+    "keras_accuracy": 0.9583333333333334,
+    "keras_fpr": 0.0,
+    "precision_per_class": [
+      0.9230769230769231,
+      1.0,
+      0.9230769230769231,
+      1.0
+    ],
+    "recall_per_class": [
+      1.0,
+      1.0,
+      1.0,
+      0.8333333333333334
+    ],
+    "f1_per_class": [
+      0.96,
+      1.0,
+      0.96,
+      0.9090909090909091
+    ],
+    "tflite_accuracy": 0.987952,
+    "accuracy_drop": 0.0,
+    "tflite_fpr": 0.0,
+    "tflite_latency_ms_python": 0.0013,
+    "high_conf_retention_pct": 0.0,
+    "high_conf_accuracy": 0.0
+  },
+  "estimated_esp32": {
+    "tensor_arena_bytes": 12288,
+    "tensor_arena_kb": 12,
+    "axis_buffers_bytes": 4800,
+    "feature_array_bytes": 168,
+    "estimated_total_sram_bytes": 19304,
+    "estimated_total_sram_kb": 18.9,
+    "flash_model_bytes": 6152,
+    "flash_model_kb": 6.01,
+    "total_sram_available_kb": 520,
+    "sram_usage_pct": 3.6
+  }
+}
