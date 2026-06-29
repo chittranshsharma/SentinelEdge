@@ -19,7 +19,7 @@ export default function DashboardPage() {
           .from('anomalies')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(10),
+          .limit(20),
         supabase
           .from('sensor_readings')
           .select('*')
@@ -42,7 +42,7 @@ export default function DashboardPage() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'anomalies' },
         (payload) => {
-          setAnomalies((prev) => [payload.new as Anomaly, ...prev].slice(0, 10))
+          setAnomalies((prev) => [payload.new as Anomaly, ...prev].slice(0, 20))
         }
       )
       .subscribe()
@@ -87,66 +87,54 @@ export default function DashboardPage() {
       <DeviceStatus lastReading={lastReading} />
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          {
-            label: 'Anomalies (recent)',
-            value: loading ? '…' : String(totalAnomalies),
-            sub: 'last 10 events',
-            accent: 'from-red-500/20 to-red-500/5',
-            dot: 'bg-red-500',
-          },
-          {
-            label: 'Last Fault',
-            value: lastAnomaly ? FAULT_LABELS[lastAnomaly.fault_class] : 'None',
-            sub: lastAnomaly
-              ? `${(lastAnomaly.confidence * 100).toFixed(0)}% confidence`
-              : 'all clear',
-            accent: lastAnomaly
-              ? 'from-orange-500/20 to-orange-500/5'
-              : 'from-green-500/20 to-green-500/5',
-            dot: lastAnomaly ? 'bg-orange-500' : 'bg-green-500',
-          },
-          {
-            label: 'Avg Confidence',
-            value: avgConfidence === '--' ? '--' : `${avgConfidence}%`,
-            sub: 'fault predictions',
-            accent: 'from-violet-500/20 to-violet-500/5',
-            dot: 'bg-violet-500',
-          },
-          {
-            label: 'Inference Latency',
-            value: lastAnomaly?.inference_latency_ms
-              ? `${lastAnomaly.inference_latency_ms}ms`
-              : '--',
-            sub: 'on-device (ESP32)',
-            accent: 'from-cyan-500/20 to-cyan-500/5',
-            dot: 'bg-cyan-500',
-          },
-        ].map((card) => (
-          <div
-            key={card.label}
-            className={`relative rounded-xl border border-gray-800 bg-gradient-to-br ${card.accent} p-4 overflow-hidden`}
-          >
-            <div className={`absolute top-3 right-3 w-2 h-2 rounded-full ${card.dot} animate-pulse`} />
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">{card.label}</p>
-            <p className="text-2xl font-bold text-white mt-1">{card.value}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{card.sub}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Card 1: Device Status */}
+        <div className="relative rounded-xl border border-gray-800 bg-gradient-to-br from-gray-800/40 to-gray-900/40 p-6 overflow-hidden">
+          <div className={`absolute top-4 right-4 w-3 h-3 rounded-full animate-pulse ${
+            lastReading && (new Date().getTime() - new Date(lastReading.timestamp).getTime() < 120000)
+              ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]'
+              : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'
+          }`} />
+          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider mb-2">Device Status</p>
+          <p className="text-3xl font-bold text-white">
+            {!lastReading ? 'WAITING' : (
+              new Date().getTime() - new Date(lastReading.timestamp).getTime() < 120000 ? 'ONLINE' : 'OFFLINE'
+            )}
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            {lastReading ? `Last seen: ${new Date(lastReading.timestamp).toLocaleTimeString()}` : 'No telemetry received'}
+          </p>
+        </div>
+
+        {/* Card 2: Current State */}
+        <div className={`relative rounded-xl border border-gray-800 bg-gradient-to-br p-6 overflow-hidden ${
+          lastAnomaly ? 'from-blue-500/20 to-blue-900/10' : 'from-gray-800/40 to-gray-900/40'
+        }`}>
+          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider mb-2">Current State</p>
+          <p className="text-3xl font-bold text-white uppercase">
+            {lastAnomaly ? FAULT_LABELS[lastAnomaly.fault_class] : 'UNKNOWN'}
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            {lastAnomaly ? `Since ${new Date(lastAnomaly.timestamp).toLocaleTimeString()}` : 'Waiting for transition'}
+          </p>
+        </div>
+
+        {/* Card 3: Confidence */}
+        <div className="relative rounded-xl border border-gray-800 bg-gradient-to-br from-gray-800/40 to-gray-900/40 p-6 overflow-hidden">
+          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider mb-2">Confidence</p>
+          <p className="text-3xl font-bold text-white">
+            {lastAnomaly ? `${(lastAnomaly.confidence * 100).toFixed(0)}%` : '--'}
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            TFLite on ESP32
+          </p>
+        </div>
       </div>
 
-      {/* Main content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Live readings — 1 col */}
-        <div className="lg:col-span-1">
-          <LiveReadings reading={lastReading} />
-        </div>
-
-        {/* Anomaly feed — 2 cols */}
-        <div className="lg:col-span-2">
-          <AnomalyFeed anomalies={anomalies} loading={loading} />
-        </div>
+      {/* Main content: Recent Events Table */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold text-white mb-4">Last 20 Events</h2>
+        <AnomalyFeed anomalies={anomalies} loading={loading} />
       </div>
     </div>
   )

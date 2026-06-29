@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { type Anomaly, FAULT_LABELS, FAULT_COLORS } from '@/lib/supabase'
 
 interface Props {
@@ -7,86 +8,83 @@ interface Props {
   loading:   boolean
 }
 
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
-  const s = Math.floor(diff / 1000)
-  if (s < 60)  return `${s}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  return `${Math.floor(s / 3600)}h ago`
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  return `${Math.floor(s / 3600)}h`
 }
 
 export default function AnomalyFeed({ anomalies, loading }: Props) {
-  return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-5 h-full">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-300">Recent Anomalies</h2>
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-          <span className="text-xs text-gray-500">Live</span>
-        </div>
-      </div>
+  const [now, setNow] = useState(Date.now())
 
-      {loading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-16 rounded-lg bg-gray-800/50 animate-pulse" />
-          ))}
-        </div>
-      ) : anomalies.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-48 text-gray-600">
-          <div className="text-3xl mb-2">✓</div>
-          <p className="text-sm">No anomalies detected</p>
-          <p className="text-xs mt-1">All systems nominal</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {anomalies.map((a) => {
-            const color   = FAULT_COLORS[a.fault_class]
-            const hasGps  = a.gps_lat !== null && a.gps_lng !== null
-            return (
-              <div
-                key={a.id}
-                className="flex items-start gap-3 p-3 rounded-lg bg-gray-800/40 hover:bg-gray-800/70 transition-colors"
-                style={{ borderLeft: `2px solid ${color}` }}
-              >
-                <div
-                  className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
-                  style={{ backgroundColor: color }}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-white">
-                      {FAULT_LABELS[a.fault_class]}
-                    </span>
-                    <span
-                      className="text-xs font-mono px-1.5 py-0.5 rounded"
-                      style={{ backgroundColor: `${color}20`, color }}
-                    >
-                      {(a.confidence * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
-                    <span>{timeAgo(a.created_at)}</span>
-                    {hasGps && (
-                      <span>{a.gps_lat!.toFixed(4)}°N {a.gps_lng!.toFixed(4)}°E</span>
-                    )}
-                  </div>
-                  {a.llm_explanation && (
-                    <p className="text-xs text-gray-400 mt-1.5 line-clamp-2">
-                      {a.llm_explanation}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-600">
-                    {a.accel_rms_x != null && <span>RMS {a.accel_rms_x.toFixed(2)}g</span>}
-                    {a.temperature  != null && <span>· {a.temperature.toFixed(1)}°C</span>}
-                    {a.air_quality_raw != null && <span>· AQ {a.air_quality_raw}</span>}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm text-gray-400">
+          <thead className="bg-gray-800/50 text-xs uppercase font-medium text-gray-500">
+            <tr>
+              <th className="px-6 py-4">State</th>
+              <th className="px-6 py-4">Confidence</th>
+              <th className="px-6 py-4">Timestamp</th>
+              <th className="px-6 py-4">Duration</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-800">
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-6 py-4"><div className="h-4 bg-gray-800 rounded w-24"></div></td>
+                  <td className="px-6 py-4"><div className="h-4 bg-gray-800 rounded w-12"></div></td>
+                  <td className="px-6 py-4"><div className="h-4 bg-gray-800 rounded w-32"></div></td>
+                  <td className="px-6 py-4"><div className="h-4 bg-gray-800 rounded w-16"></div></td>
+                </tr>
+              ))
+            ) : anomalies.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
+                  No events recorded
+                </td>
+              </tr>
+            ) : (
+              anomalies.map((a, i) => {
+                const color = FAULT_COLORS[a.fault_class] || '#ffffff'
+                const t = new Date(a.timestamp).getTime()
+                
+                // Duration: diff to next event, or diff to NOW for the current (index 0) event
+                const durationMs = i === 0 
+                  ? now - t
+                  : new Date(anomalies[i - 1].timestamp).getTime() - t
+
+                return (
+                  <tr key={a.id} className="hover:bg-gray-800/20 transition-colors">
+                    <td className="px-6 py-4 font-medium text-white flex items-center gap-2 uppercase">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                      {FAULT_LABELS[a.fault_class] || 'UNKNOWN'}
+                    </td>
+                    <td className="px-6 py-4 font-mono">
+                      <span className="px-2 py-1 rounded" style={{ backgroundColor: `${color}20`, color }}>
+                        {(a.confidence * 100).toFixed(0)}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {new Date(a.timestamp).toLocaleTimeString()}
+                    </td>
+                    <td className="px-6 py-4 font-mono text-gray-300">
+                      {formatDuration(durationMs)}
+                    </td>
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

@@ -81,8 +81,8 @@ class AnomalyRecord(BaseModel):
 
 
 FAULT_LABELS = {
-    0: "normal",
-    1: "imbalance",
-    2: "obstruction",
-    3: "loose_mount",
+    0: "stationary",
+    1: "movement",
+    2: "rotation",
+    3: "shake",
 }

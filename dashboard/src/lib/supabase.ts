@@ -54,10 +54,10 @@ export interface Anomaly {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 export const FAULT_LABELS: Record<number, string> = {
-  0: 'Normal',
-  1: 'Imbalance',
-  2: 'Obstruction',
-  3: 'Loose Mount',
+  0: 'Stationary',
+  1: 'Movement',
+  2: 'Rotation',
+  3: 'Shake',
 }
 
 export const FAULT_COLORS: Record<number, string> = {

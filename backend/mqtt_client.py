@@ -100,55 +100,8 @@ async def process_anomaly(payload: AnomalyPayload):
     if anomaly_id is None:
         logger.error("Failed to insert anomaly — skipping LLM + Telegram")
         return
-
-    # Step 3: Generate Groq LLM explanation
-    explanation = await groq_client.generate_explanation(
-        fault_label=payload.fault_label,
-        confidence=payload.confidence,
-        accel_rms_x=s.accel_rms_x,
-        temperature=s.temperature,
-        humidity=s.humidity,
-        air_quality_raw=s.air_quality_raw,
-        gps_lat=s.gps_lat,
-        gps_lng=s.gps_lng,
-        timestamp=payload.timestamp,
-    )
-
-    # Step 4: Update anomaly with explanation
-    if explanation:
-        await db.update_anomaly_explanation(anomaly_id, explanation)
-
-    # Step 5: Send Telegram alert
-    ok, message = await telegram_client.send_anomaly_alert(
-        fault_label=payload.fault_label,
-        confidence=payload.confidence,
-        timestamp_epoch=payload.timestamp,
-        gps_lat=s.gps_lat,
-        gps_lng=s.gps_lng,
-        accel_rms_x=s.accel_rms_x,
-        temperature=s.temperature,
-        humidity=s.humidity,
-        air_quality_raw=s.air_quality_raw,
-        inference_latency_ms=payload.inference_latency_ms,
-        llm_explanation=explanation,
-    )
-
-    if ok:
-        await db.update_anomaly_telegram_sent(anomaly_id)
-
-    # Step 6: Write alert log
-    if ok:
-        await db.write_alert(
-            anomaly_id=anomaly_id,
-            channel="telegram",
-            message=message,
-        )
-
-    logger.info(
-        f"Anomaly pipeline complete: {payload.fault_label} "
-        f"({payload.confidence:.0%}) | LLM={'ok' if explanation else 'failed'} "
-        f"| Telegram={'ok' if ok else 'failed'}"
-    )
+    # Phase 1: Skip LLM and Telegram. Just ensure reliable data flow to Supabase.
+    logger.info(f"Successfully processed transition: {payload.fault_label} (anomaly_id={anomaly_id})")
 
 
 async def process_heartbeat(payload: HeartbeatPayload):
