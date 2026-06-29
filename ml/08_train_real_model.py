@@ -21,9 +21,7 @@ LABELS = {0: "stationary", 1: "movement", 2: "rotation", 3: "shake"}
 
 def build_nn(input_dim=FEATURE_COUNT, num_classes=NUM_CLASSES):
     inputs = keras.Input(shape=(input_dim,))
-    x = keras.layers.Dense(32, activation='relu')(inputs)
-    x = keras.layers.Dense(16, activation='relu')(x)
-    outputs = keras.layers.Dense(num_classes, activation='softmax')(x)
+    outputs = keras.layers.Dense(num_classes, activation='softmax')(inputs)
     return keras.Model(inputs, outputs, name='SentinelEdge_RealClassifier')
 
 def main():

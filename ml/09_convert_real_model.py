@@ -290,7 +290,7 @@ def main():
     with open(MODELS_DIR / 'real_scaler_params.json') as f:
         scaler_params = json.load(f)
 
-    data = np.load(DATA_DIR / 'real_features.npz', allow_pickle=True)
+    data = np.load(DATA_DIR / 'session1_features.npz', allow_pickle=True)
     X_raw = data['X'].astype(np.float32)
     mean_v  = np.array(scaler_params['mean'],  dtype=np.float32)
     scale_v = np.array(scaler_params['scale'], dtype=np.float32)

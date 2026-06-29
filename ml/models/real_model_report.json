@@ -1,8 +1,8 @@
 {
   "generated_by": "ml/09_convert_real_model.py",
   "model_file": "fault_model.tflite",
-  "model_size_bytes": 6152,
-  "model_size_kb": 6.01,
+  "model_size_bytes": 1808,
+  "model_size_kb": 1.77,
   "input_shape": [
     1,
     42
@@ -13,8 +13,8 @@
   ],
   "input_dtype": "int8",
   "output_dtype": "int8",
-  "input_scale": 0.04123847931623459,
-  "input_zero_point": -16,
+  "input_scale": 0.04285305365920067,
+  "input_zero_point": -20,
   "output_scale": 0.00390625,
   "output_zero_point": -128,
   "classes": [
@@ -74,12 +74,10 @@
       0.96,
       0.9090909090909091
     ],
-    "tflite_accuracy": 0.987952,
-    "accuracy_drop": 0.0,
-    "tflite_fpr": 0.0,
-    "tflite_latency_ms_python": 0.0013,
-    "high_conf_retention_pct": 0.0,
-    "high_conf_accuracy": 0.0
+    "tflite_accuracy": null,
+    "accuracy_drop": null,
+    "tflite_fpr": null,
+    "tflite_latency_ms_python": null
   },
   "estimated_esp32": {
     "tensor_arena_bytes": 12288,
@@ -88,8 +86,8 @@
     "feature_array_bytes": 168,
     "estimated_total_sram_bytes": 19304,
     "estimated_total_sram_kb": 18.9,
-    "flash_model_bytes": 6152,
-    "flash_model_kb": 6.01,
+    "flash_model_bytes": 1808,
+    "flash_model_kb": 1.77,
     "total_sram_available_kb": 520,
     "sram_usage_pct": 3.6
   }

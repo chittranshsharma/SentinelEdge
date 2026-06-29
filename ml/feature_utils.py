@@ -119,30 +119,34 @@ def extract_features_window(window: np.ndarray) -> np.ndarray:
         # Peak-to-peak: max - min
         peak_to_peak = x.max() - x.min()
 
-        # ── Frequency-domain ─────────────────────────────────────────────
-        # rfft: unnormalized DFT, returns N//2+1 complex values
-        # Index 0  = DC component (skip for dominant_freq and energy)
-        # Index 1  = fs/N = 0.5 Hz
-        # Index 100 = 50 Hz (Nyquist for 100Hz sample rate)
-        fft_complex = np.fft.rfft(x)          # shape: (101,)
-        magnitudes  = np.abs(fft_complex)      # shape: (101,), real values
-
-        # dominant_freq_bin: 1-indexed bin with max magnitude, DC excluded
-        # argmax on magnitudes[1:] returns 0-based index in slice.
-        # Add 1 to convert to actual bin number (1=0.5Hz, 50=25Hz, 24=12Hz).
-        dominant_freq_bin = float(np.argmax(magnitudes[1:]) + 1)
-
-        # spectral_energy: sum of squared magnitudes, DC excluded
-        spectral_energy = float(np.dot(magnitudes[1:], magnitudes[1:]))
-
-        # ── Store ─────────────────────────────────────────────────────────
+        # ── Frequency-domain (Handled below) ─────────────────────────────
+        # ── Store Time Domain ─────────────────────────────────────────────
         features[idx + 0] = mean
         features[idx + 1] = std
         features[idx + 2] = variance
         features[idx + 3] = rms
         features[idx + 4] = peak_to_peak
-        features[idx + 5] = dominant_freq_bin
-        features[idx + 6] = spectral_energy
+
+        # ── FFT pass ────────────────────────────────────────────────────────
+        # C++ compatibility:
+        # 1. arduinoFFT uses 256 points (zero-padded from 200).
+        # 2. To prevent DC leakage during zero-padding, we must subtract the mean first.
+        # 3. C++ sums bins 1 to 100.
+        mean_val = features[idx+0]
+        x_zero_mean = x - mean_val
+        
+        x_padded = np.zeros(256, dtype=np.float64)
+        x_padded[:N] = x_zero_mean
+        
+        fft_vals = np.fft.rfft(x_padded)
+        magnitudes = np.abs(fft_vals)
+
+        # Skip bin 0 (DC). Use bins 1 through 100 inclusive (indices 1:101)
+        dom_bin = np.argmax(magnitudes[1:101]) + 1
+        features[idx+5] = dom_bin
+
+        spec_energy = np.sum(magnitudes[1:101] ** 2)
+        features[idx+6] = spec_energy
         idx += NUM_FEATURES_PER_AXIS
 
     return features
