@@ -5,6 +5,7 @@ import { supabase, type Anomaly, type SensorReading, FAULT_LABELS, FAULT_COLORS 
 import DeviceStatus from '@/components/DeviceStatus'
 import LiveReadings from '@/components/LiveReadings'
 import AnomalyFeed from '@/components/AnomalyFeed'
+import EnvTelemetry from '@/components/EnvTelemetry'
 
 export default function DashboardPage() {
   const [anomalies, setAnomalies]   = useState<Anomaly[]>([])
@@ -130,6 +131,9 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {/* Environmental Telemetry (Phase 2) */}
+      <EnvTelemetry reading={lastReading} />
 
       {/* Main content: Recent Events Table */}
       <div className="mt-8">

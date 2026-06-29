@@ -117,15 +117,17 @@ bool mqttConnected() {
 
 // ── JSON Builder ───────────────────────────────────────────────────────────────
 static void buildSensorsObject(JsonObject sensorsObj, const SensorSnapshot& s) {
-    sensorsObj["accel_rms_x"]    = serialized(String(s.accelRmsX, 3));
-    sensorsObj["accel_rms_y"]    = serialized(String(s.accelRmsY, 3));
-    sensorsObj["accel_rms_z"]    = serialized(String(s.accelRmsZ, 3));
-    sensorsObj["temperature"]    = serialized(String(s.temperature, 1));
-    sensorsObj["humidity"]       = serialized(String(s.humidity, 1));
+    sensorsObj["accel_rms_x"]     = serialized(String(s.accelRmsX, 3));
+    sensorsObj["accel_rms_y"]     = serialized(String(s.accelRmsY, 3));
+    sensorsObj["accel_rms_z"]     = serialized(String(s.accelRmsZ, 3));
+    sensorsObj["temperature"]     = serialized(String(s.temperature, 1));
+    sensorsObj["humidity"]        = serialized(String(s.humidity, 1));
     sensorsObj["air_quality_raw"] = s.airQualityRaw;
-    sensorsObj["gps_lat"]        = serialized(String(s.gpsLat, 6));
-    sensorsObj["gps_lng"]        = serialized(String(s.gpsLng, 6));
-    sensorsObj["gps_fix"]        = s.gpsFix;
+    sensorsObj["gps_lat"]         = serialized(String(s.gpsLat, 6));
+    sensorsObj["gps_lng"]         = serialized(String(s.gpsLng, 6));
+    sensorsObj["gps_fix"]         = s.gpsFix;
+    sensorsObj["gps_satellites"]  = s.gpsSatellites;  // Phase 2
+    sensorsObj["gps_simulated"]   = s.gpsSimulated;   // Phase 2
 }
 
 // ── Publish Anomaly ────────────────────────────────────────────────────────────
@@ -158,10 +160,10 @@ void publishAnomaly(
 
     bool ok = mqttClient.publish(TOPIC_ANOMALY, payload, false);  // retain=false
     if (ok) {
-        Serial.printf("[MQTT] Anomaly published: %s (%.0f%%) — %zu bytes\n",
+        Serial.printf("[MQTT] Anomaly published: %s (%.0f%%) — %zu bytes (buf=1024)\n",
             FAULT_LABELS[faultClass], confidence * 100.0f, len);
     } else {
-        Serial.printf("[MQTT] Anomaly publish FAILED (payload=%zu bytes)\n", len);
+        Serial.printf("[MQTT] Anomaly publish FAILED (payload=%zu bytes, buf=1024)\n", len);
     }
 }
 

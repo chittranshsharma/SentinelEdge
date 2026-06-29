@@ -51,6 +51,8 @@ async def write_sensor_reading(
     gps_lat: Optional[float] = None,
     gps_lng: Optional[float] = None,
     gps_fix: bool = False,
+    gps_satellites: Optional[int] = None,
+    gps_simulated: bool = False,
 ) -> Optional[str]:
     """
     Insert a row into sensor_readings.
@@ -67,10 +69,11 @@ async def write_sensor_reading(
             "air_quality_raw": air_quality_raw,
             "accel_rms_x":     accel_rms_x,
             "accel_rms_y":     accel_rms_y,
-            "accel_rms_z":     accel_rms_z,
             "gps_lat":         gps_lat,
             "gps_lng":         gps_lng,
             "gps_fix":         gps_fix,
+            "gps_satellites":  gps_satellites,
+            "gps_simulated":   gps_simulated,
         }
         result = client.table("sensor_readings").insert(record).execute()
         row_id = result.data[0]["id"] if result.data else None

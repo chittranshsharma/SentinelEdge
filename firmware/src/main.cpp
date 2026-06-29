@@ -74,8 +74,7 @@ static const char *DEVICE_ID = "sentineledge-001";
 // ────────────────────────────────────────────────────────────────────
 #define SAMPLE_INTERVAL_US 10000UL    // 10ms = 100Hz
 #define HEARTBEAT_INTERVAL_MS 60000UL // 60s heartbeat
-#define DHT_READ_INTERVAL_MS                                                   \
-  2000UL // DHT11 max sample rate = 1Hz, read every 2s
+#define DHT_READ_INTERVAL_MS 10000UL  // DHT11: read every 10s (Phase 2 telemetry rate)
 
 // MQ5 warmup: needs 3-5 minutes after power-on for stable readings.
 // We log a warning for the first 5 minutes but don't block operation.
@@ -105,13 +104,22 @@ static HardwareSerial gpsSerial(2); // UART2: RX=16, TX=17
 static float cachedTemp = 0.0f;
 static float cachedHumidity = 0.0f;
 static int cachedAirQuality = 0;
-static double cachedGpsLat = 0.0;
-static double cachedGpsLng = 0.0;
-static bool cachedGpsFix = false;
-static unsigned long cachedGpsAge = 0; // millis() when GPS was last updated
-static unsigned long lastDhtRead = 0;
+static double cachedGpsLat  = 0.0;
+static double cachedGpsLng  = 0.0;
+static bool   cachedGpsFix  = false;
+static int    cachedGpsSats = 0;          // Phase 2: satellite count
+static unsigned long cachedGpsAge = 0;    // millis() when GPS was last updated
+static unsigned long lastDhtRead   = 0;
 static unsigned long lastHeartbeat = 0;
-static int g_currentState = 0; // 0 = stationary
+static int g_currentState = 0;            // 0 = stationary
+
+// ── MQ5 moving-average smoother ──────────────────────────────────────────────
+// 8-sample circular buffer. Smooths ADC noise and detects stuck sensor.
+#define MQ5_SMOOTH_SAMPLES 8
+#define MQ5_STUCK_THRESHOLD 5  // ADC counts; pure noise is usually < 3 LSB
+static int mq5SmoothBuf[MQ5_SMOOTH_SAMPLES] = {0};
+static int mq5SmoothIdx  = 0;   // next write position
+static int mq5SmoothFill = 0;   // 0..8 (warmup counter)
 
 // ── Inference state
 // ───────────────────────────────────────────────────────────
@@ -258,27 +266,57 @@ static void readDHT() {
 }
 
 static void readMQ5() {
-  // Raw ADC — no conversion needed (backend receives raw ADC value)
-  cachedAirQuality = analogRead(MQ5_PIN);
-  if (millis() < MQ5_WARMUP_MS) {
-    // MQ5 still warming up — value is unreliable
-    // Log to help the dashboard know reading is not yet stable
+  int raw = analogRead(MQ5_PIN);
+
+  // Push into circular smoother buffer
+  mq5SmoothBuf[mq5SmoothIdx % MQ5_SMOOTH_SAMPLES] = raw;
+  mq5SmoothIdx++;
+  if (mq5SmoothFill < MQ5_SMOOTH_SAMPLES) mq5SmoothFill++;
+
+  // Compute smoothed average over filled samples
+  long sum = 0;
+  for (int i = 0; i < mq5SmoothFill; i++) sum += mq5SmoothBuf[i];
+  cachedAirQuality = (int)(sum / mq5SmoothFill);
+
+  // Stuck sensor detection: all filled readings within ±STUCK_THRESHOLD
+  // Uses tolerance (not exact equality) because ADC noise causes small drift.
+  if (mq5SmoothFill == MQ5_SMOOTH_SAMPLES) {
+    bool stuck = true;
+    for (int i = 1; i < MQ5_SMOOTH_SAMPLES; i++) {
+      if (abs(mq5SmoothBuf[i] - mq5SmoothBuf[0]) > MQ5_STUCK_THRESHOLD) {
+        stuck = false;
+        break;
+      }
+    }
+    if (stuck) {
+      Serial.println("[MQ5] WARNING: readings stuck — check wiring or sensor damage");
+    }
   }
 }
 
 static void readGPS() {
-  // Drain UART2 buffer; TinyGPSPlus parses NMEA sentences
+#ifdef GPS_SIMULATION
+  // Simulation mode: fixed New Delhi coordinates, 8 satellites.
+  // Remove -DGPS_SIMULATION from platformio.ini [env:inference] to use real NEO-6M.
+  cachedGpsLat  = 28.6139;
+  cachedGpsLng  = 77.2090;
+  cachedGpsSats = 8;
+  cachedGpsFix  = true;
+  (void)gpsSerial; // suppress unused warning in simulation mode
+#else
+  // Real GPS: drain UART2 buffer; TinyGPSPlus parses NMEA sentences.
   while (gpsSerial.available()) {
     gps.encode(gpsSerial.read());
   }
   if (gps.location.isValid() && gps.location.isUpdated()) {
-    cachedGpsLat = gps.location.lat();
-    cachedGpsLng = gps.location.lng();
-    cachedGpsFix = true;
-    cachedGpsAge = millis();
+    cachedGpsLat  = gps.location.lat();
+    cachedGpsLng  = gps.location.lng();
+    cachedGpsSats = gps.satellites.isValid() ? (int)gps.satellites.value() : 0;
+    cachedGpsFix  = true;
+    cachedGpsAge  = millis();
   }
-  // Indoor / no satellite: cachedGpsFix remains false,
-  // last known coordinates are used (or 0.0, 0.0 if never had fix)
+  // Indoor / no satellite lock: cachedGpsFix remains false.
+#endif
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -289,26 +327,34 @@ static SensorSnapshot buildSnapshot() {
   // Accel RMS comes from feature array (features[3] = ax_rms, etc.)
   // Feature order: [ax_mean, ax_std, ax_variance, ax_rms, ...] per axis
   // ax_rms = features[3], ay_rms = features[10], az_rms = features[17]
-  s.accelRmsX = features[3];  // ax_rms (raw, before normalization)
-  s.accelRmsY = features[10]; // ay_rms
-  s.accelRmsZ = features[17]; // az_rms
-  s.temperature = cachedTemp;
-  s.humidity = cachedHumidity;
+  s.accelRmsX     = features[3];       // ax_rms (raw, before normalization)
+  s.accelRmsY     = features[10];      // ay_rms
+  s.accelRmsZ     = features[17];      // az_rms
+  s.temperature   = cachedTemp;
+  s.humidity      = cachedHumidity;
   s.airQualityRaw = cachedAirQuality;
-  s.gpsLat = cachedGpsLat;
-  s.gpsLng = cachedGpsLng;
-  s.gpsFix = cachedGpsFix;
+  s.gpsLat        = cachedGpsLat;
+  s.gpsLng        = cachedGpsLng;
+  s.gpsFix        = cachedGpsFix;
+  s.gpsSatellites = cachedGpsSats;     // Phase 2
+#ifdef GPS_SIMULATION
+  s.gpsSimulated  = true;
+#else
+  s.gpsSimulated  = false;
+#endif
 
   // Timestamp: use GPS time if available, else millis()-based approximation
+#ifdef GPS_SIMULATION
+  s.timestampEpoch = millis() / 1000;  // simulation: uptime fallback
+#else
   if (gps.time.isValid()) {
-    // GPS provides UTC time — construct approximate epoch
-    // (simplified: seconds since midnight; add date offset if needed)
     s.timestampEpoch = (unsigned long)gps.time.second() +
                        (unsigned long)gps.time.minute() * 60 +
                        (unsigned long)gps.time.hour() * 3600;
   } else {
-    s.timestampEpoch = millis() / 1000; // uptime in seconds as fallback
+    s.timestampEpoch = millis() / 1000;
   }
+#endif
 
   return s;
 }

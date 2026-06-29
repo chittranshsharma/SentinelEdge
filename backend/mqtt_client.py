@@ -75,6 +75,8 @@ async def process_anomaly(payload: AnomalyPayload):
         gps_lat=s.gps_lat,
         gps_lng=s.gps_lng,
         gps_fix=s.gps_fix or False,
+        gps_satellites=s.gps_satellites,
+        gps_simulated=s.gps_simulated or False,
     )
 
     # Step 2: Write anomaly record (initially without LLM explanation)
@@ -119,6 +121,8 @@ async def process_heartbeat(payload: HeartbeatPayload):
         gps_lat=s.gps_lat,
         gps_lng=s.gps_lng,
         gps_fix=s.gps_fix or False,
+        gps_satellites=s.gps_satellites,
+        gps_simulated=s.gps_simulated or False,
     )
     logger.debug(f"Heartbeat logged for {payload.device_id}")
 

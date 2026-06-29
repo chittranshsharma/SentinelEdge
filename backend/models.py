@@ -20,6 +20,8 @@ class SensorPayload(BaseModel):
     gps_lat:        Optional[float] = None
     gps_lng:        Optional[float] = None
     gps_fix:        Optional[bool]  = False
+    gps_satellites: Optional[int]   = None
+    gps_simulated:  Optional[bool]  = False
 
 
 class AnomalyPayload(BaseModel):

@@ -24,15 +24,17 @@
 // Passed to publishAnomaly() and publishHeartbeat().
 // GPS values use last known fix (may be stale if indoor with no satellite lock).
 struct SensorSnapshot {
-    float accelRmsX;
-    float accelRmsY;
-    float accelRmsZ;
-    float temperature;
-    float humidity;
-    int   airQualityRaw;
+    float  accelRmsX;
+    float  accelRmsY;
+    float  accelRmsZ;
+    float  temperature;
+    float  humidity;
+    int    airQualityRaw;
     double gpsLat;
     double gpsLng;
-    bool  gpsFix;
+    bool   gpsFix;
+    int    gpsSatellites;          // Phase 2: satellite count (0 if unknown)
+    bool   gpsSimulated;           // Phase 2: true when GPS_SIMULATION is active
     unsigned long timestampEpoch;  // Unix timestamp (from GPS or millis() fallback)
 };
 

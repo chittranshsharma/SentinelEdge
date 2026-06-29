@@ -27,7 +27,15 @@ export interface SensorReading {
   gps_lat:         number | null
   gps_lng:         number | null
   gps_fix:         boolean
+  gps_satellites:  number | null
+  gps_simulated:   boolean | null
   created_at:      string
+}
+
+// Helper: convert raw 12-bit ADC (0-4095) to 0-100%
+export function gasToPercent(raw: number | null): number | null {
+  if (raw === null || raw === undefined) return null
+  return Math.round((raw / 4095) * 100)
 }
 
 export interface Anomaly {
