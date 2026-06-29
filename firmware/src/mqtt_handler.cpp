@@ -17,10 +17,10 @@ static const unsigned long RECONNECT_INTERVAL_MS = 5000;
 
 // Fault class label strings
 static const char* FAULT_LABELS[] = {
-    "normal",
-    "imbalance",
-    "obstruction",
-    "loose_mount"
+    "stationary",
+    "movement",
+    "rotation",
+    "shake"
 };
 
 // ── WiFi ───────────────────────────────────────────────────────────────────────
@@ -166,14 +166,16 @@ void publishAnomaly(
 }
 
 // ── Publish Heartbeat ──────────────────────────────────────────────────────────
-void publishHeartbeat(const SensorSnapshot& sensors) {
+void publishHeartbeat(const SensorSnapshot& sensors, int currentState) {
     if (!mqttClient.connected()) return;
 
     JsonDocument doc;
-    doc["device_id"]  = _deviceId;
-    doc["timestamp"]  = sensors.timestampEpoch;
-    doc["uptime_ms"]  = millis();
-    doc["free_heap"]  = ESP.getFreeHeap();
+    doc["device_id"]     = _deviceId;
+    doc["type"]          = "heartbeat";
+    doc["timestamp"]     = sensors.timestampEpoch;
+    doc["uptime_ms"]     = millis();
+    doc["free_heap"]     = ESP.getFreeHeap();
+    doc["current_state"] = FAULT_LABELS[currentState];
 
     JsonObject s = doc["sensors"].to<JsonObject>();
     buildSensorsObject(s, sensors);

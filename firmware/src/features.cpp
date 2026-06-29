@@ -125,6 +125,9 @@ static void computeAxisFeatures(float* buf, float* out) {
         sumSq      += v * v;
         if (v < xMin) xMin = v;
         if (v > xMax) xMax = v;
+        
+        // FIX: Subtract mean so zero-padded FFT has no DC leakage
+        fftReal[i] = diff;
     }
 
     // Population variance: divide by N (NOT N-1)

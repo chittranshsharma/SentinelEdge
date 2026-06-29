@@ -92,7 +92,7 @@ void publishAnomaly(
  *
  * @param sensors  Current sensor readings
  */
-void publishHeartbeat(const SensorSnapshot& sensors);
+void publishHeartbeat(const SensorSnapshot& sensors, int currentState);
 
 /**
  * Returns true if MQTT client is currently connected.
