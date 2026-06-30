@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { type SensorReading } from '@/lib/supabase'
 
 interface Props {
@@ -7,13 +8,28 @@ interface Props {
 }
 
 export default function DeviceStatus({ lastReading }: Props) {
-  const now       = Date.now()
-  const lastSeen  = lastReading ? new Date(lastReading.created_at).getTime() : null
-  const secondsAgo = lastSeen ? Math.floor((now - lastSeen) / 1000) : null
-  const online     = secondsAgo !== null && secondsAgo < 30
+  const [mounted, setMounted] = useState(false)
+  const [online, setOnline] = useState(false)
+  const [secondsAgo, setSecondsAgo] = useState<number | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+    const updateStatus = () => {
+      if (!lastReading) return
+      const lastSeen = new Date(lastReading.created_at).getTime()
+      const diff = Math.floor((Date.now() - lastSeen) / 1000)
+      setSecondsAgo(diff >= 0 ? diff : 0)
+      setOnline(diff >= 0 && diff < 30)
+    }
+    updateStatus()
+    const timer = setInterval(updateStatus, 1000)
+    return () => clearInterval(timer)
+  }, [lastReading])
 
   const statusText = !lastReading
     ? 'No data received'
+    : !mounted
+    ? 'Checking status...'
     : online
     ? 'Online'
     : `Last seen ${secondsAgo}s ago`

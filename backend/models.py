@@ -34,6 +34,8 @@ class AnomalyPayload(BaseModel):
     fault_class:          int   # 0=normal, 1=imbalance, 2=obstruction, 3=loose_mount
     fault_label:          str
     confidence:           float # [0.0, 1.0]
+    classification_margin: Optional[float] = None
+    unknown_candidate:    Optional[bool]  = False
     inference_latency_ms: Optional[int]  = None
     sensors:              SensorPayload  = Field(default_factory=SensorPayload)
 
@@ -44,22 +46,34 @@ class HeartbeatPayload(BaseModel):
     timestamp:   int
     uptime_ms:   Optional[int]  = None
     free_heap:   Optional[int]  = None
+    dht_success: Optional[int]  = None
+    dht_failure: Optional[int]  = None
+    current_state: Optional[str] = None
+    confidence:    Optional[float] = None
+    classification_margin: Optional[float] = None
+    unknown_candidate:    Optional[bool]  = False
     sensors:     SensorPayload  = Field(default_factory=SensorPayload)
 
 
 class SensorReadingRecord(BaseModel):
     """Record to insert into Supabase sensor_readings table."""
-    device_id:       str
-    timestamp:       datetime
-    temperature:     Optional[float] = None
-    humidity:        Optional[float] = None
-    air_quality_raw: Optional[int]   = None
-    accel_rms_x:     Optional[float] = None
-    accel_rms_y:     Optional[float] = None
-    accel_rms_z:     Optional[float] = None
-    gps_lat:         Optional[float] = None
-    gps_lng:         Optional[float] = None
-    gps_fix:         Optional[bool]  = False
+    device_id:             str
+    timestamp:             datetime
+    temperature:           Optional[float] = None
+    humidity:              Optional[float] = None
+    air_quality_raw:       Optional[int]   = None
+    accel_rms_x:           Optional[float] = None
+    accel_rms_y:           Optional[float] = None
+    accel_rms_z:           Optional[float] = None
+    gps_lat:               Optional[float] = None
+    gps_lng:               Optional[float] = None
+    gps_fix:               Optional[bool]  = False
+    dht_success:           Optional[int]   = None
+    dht_failure:           Optional[int]   = None
+    motion_state:          Optional[str]   = None
+    confidence:            Optional[float] = None
+    unknown_candidate:     Optional[bool]  = False
+    classification_margin: Optional[float] = None
 
 
 class AnomalyRecord(BaseModel):

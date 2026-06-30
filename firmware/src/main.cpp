@@ -33,7 +33,7 @@ __attribute__((constructor)) void disableBrownout() {
 }
 
 // ── Sensors ──────────────────────────────────────────────────────────────────
-#include <DHT.h>
+
 #include <MPU6050.h>
 #include <TinyGPSPlus.h>
 
@@ -73,7 +73,7 @@ static const char *DEVICE_ID = "sentineledge-001";
 // ── Timing
 // ────────────────────────────────────────────────────────────────────
 #define SAMPLE_INTERVAL_US 10000UL    // 10ms = 100Hz
-#define HEARTBEAT_INTERVAL_MS 60000UL // 60s heartbeat
+#define HEARTBEAT_INTERVAL_MS 5000UL  // 5s heartbeat
 #define DHT_READ_INTERVAL_MS 10000UL  // DHT11: read every 10s (Phase 2 telemetry rate)
 
 // MQ5 warmup: needs 3-5 minutes after power-on for stable readings.
@@ -94,15 +94,17 @@ static tflite::AllOpsResolver tflResolver;
 // ── Sensor Objects
 // ────────────────────────────────────────────────────────────
 static MPU6050 mpu;
-static DHT dht(DHT_PIN, DHT_TYPE);
+
 static TinyGPSPlus gps;
 static HardwareSerial gpsSerial(2); // UART2: RX=16, TX=17
 
 // ── Cached Sensor Values
 // ────────────────────────────────────────────────────── DHT11 and GPS are read
 // infrequently; values cached between reads
-static float cachedTemp = 0.0f;
-static float cachedHumidity = 0.0f;
+static float cachedTemp = NAN;
+static float cachedHumidity = NAN;
+static uint32_t dhtSuccess = 0;           // DHT11 success count
+static uint32_t dhtFailure = 0;           // DHT11 failure count
 static int cachedAirQuality = 0;
 static double cachedGpsLat  = 0.0;
 static double cachedGpsLng  = 0.0;
@@ -125,6 +127,8 @@ static int mq5SmoothFill = 0;   // 0..8 (warmup counter)
 // ───────────────────────────────────────────────────────────
 static int lastPredictedClass = 0;
 static float lastConfidence = 0.0f;
+static float lastClassificationMargin = 0.0f;   // Phase 3C: top1 - top2
+static bool  lastUnknownCandidate = false;        // Phase 3C: shadow-mode flag
 static unsigned long lastTotalLatencyMs = 0;
 static unsigned long lastFeatureUs = 0;
 static unsigned long lastInferenceUs = 0;
@@ -229,7 +233,7 @@ static void setupSensors() {
   Serial.println("[MPU6050] OK — ±2g / ±250dps");
 
   // DHT11 — temperature/humidity
-  dht.begin();
+
   Serial.println("[DHT11]   OK — GPIO4");
 
   // MQ5 — gas/air quality (ADC)
@@ -249,20 +253,96 @@ static void setupSensors() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sensor Reads (cached / rate-limited)
 // ─────────────────────────────────────────────────────────────────────────────
+static bool readDHTRaw(float &temp, float &hum) {
+  uint8_t data[5] = {0, 0, 0, 0, 0};
+ 
+  // 1. Send start signal
+  pinMode(DHT_PIN, OUTPUT);
+  digitalWrite(DHT_PIN, LOW);
+  delay(18); // Pull low for 18ms
+  digitalWrite(DHT_PIN, HIGH);
+  delayMicroseconds(40); // Pull high for 40us
+  pinMode(DHT_PIN, INPUT_PULLUP);
+ 
+  // 2. Read pulses with interrupts disabled (only during the 4ms data window!)
+  portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+  portENTER_CRITICAL(&mux);
+ 
+  // Acknowledge handshake from sensor
+  // Sensor pulls low for 80us, then high for 80us
+  uint32_t hs_start = micros();
+  while (digitalRead(DHT_PIN) == LOW) {
+    if (micros() - hs_start > 150) { portEXIT_CRITICAL(&mux); return false; }
+  }
+  hs_start = micros();
+  while (digitalRead(DHT_PIN) == HIGH) {
+    if (micros() - hs_start > 150) { portEXIT_CRITICAL(&mux); return false; }
+  }
+ 
+  // Read 40 bits
+  for (int i = 0; i < 40; i++) {
+    // Wait for low pulse (50us) to start
+    uint32_t low_start = micros();
+    while (digitalRead(DHT_PIN) == LOW) {
+      if (micros() - low_start > 100) { portEXIT_CRITICAL(&mux); return false; }
+    }
+    // Measure high pulse width
+    uint32_t high_start = micros();
+    while (digitalRead(DHT_PIN) == HIGH) {
+      if (micros() - high_start > 100) { portEXIT_CRITICAL(&mux); return false; }
+    }
+    uint32_t duration = micros() - high_start;
+    
+    data[i / 8] <<= 1;
+    // A high pulse of > 40us represents a '1'
+    if (duration > 40) {
+      data[i / 8] |= 1;
+    }
+  }
+ 
+  portEXIT_CRITICAL(&mux);
+ 
+  // 3. Verify checksum
+  uint8_t total = (data[0] + data[1] + data[2] + data[3]) & 0xFF;
+  if (data[4] == total) {
+    hum = data[0];
+    temp = data[2];
+    if (data[1] < 10) hum += data[1] * 0.1f;
+    if (data[3] < 10) temp += data[3] * 0.1f;
+    return true;
+  }
+ 
+  return false;
+}
+ 
 static void readDHT() {
-  // DHT11 max reliable rate: 1 reading per second. Read every 2s.
+  // DHT11 max reliable rate: 1 reading per second. Read every 10s (Phase 2 telemetry rate).
   unsigned long now = millis();
   if (now - lastDhtRead < DHT_READ_INTERVAL_MS)
     return;
   lastDhtRead = now;
-
-  float t = dht.readTemperature();
-  float h = dht.readHumidity();
-  if (!isnan(t) && !isnan(h)) {
-    cachedTemp = t;
-    cachedHumidity = h;
+ 
+  for (int retry = 0; retry < 3; retry++) {
+    unsigned long start = micros();
+    float t_val = NAN;
+    float h_val = NAN;
+    bool success = readDHTRaw(t_val, h_val);
+    unsigned long elapsed = micros() - start;
+ 
+    Serial.printf("[DHT] Attempt %d: success=%d t=%.2f h=%.2f elapsed=%lu us\n", retry + 1, success, t_val, h_val, elapsed);
+    if (success && !isnan(t_val) && !isnan(h_val) && !(t_val == 0.0f && h_val == 0.0f)) {
+      cachedTemp = t_val;
+      cachedHumidity = h_val;
+      dhtSuccess++;
+      return; // Success!
+    }
+    delay(1100); // wait for sensor to reset/re-measure (DHT11 requires >1s between reads)
   }
-  // If DHT11 read fails (returns NaN), keep previous cached value
+ 
+  Serial.println("[DHT11] All retries failed");
+  cachedTemp = NAN;
+  cachedHumidity = NAN;
+  dhtFailure++;
 }
 
 static void readMQ5() {
@@ -342,6 +422,12 @@ static SensorSnapshot buildSnapshot() {
 #else
   s.gpsSimulated  = false;
 #endif
+  s.dhtSuccess             = dhtSuccess;
+  s.dhtFailure             = dhtFailure;
+  // Phase 3C: shadow-mode shadow inference metrics
+  s.confidence             = lastConfidence;
+  s.classificationMargin   = lastClassificationMargin;
+  s.unknownCandidate       = lastUnknownCandidate;
 
   // Timestamp: use GPS time if available, else millis()-based approximation
 #ifdef GPS_SIMULATION
@@ -389,34 +475,50 @@ static void runInference() {
     return;
   }
 
-  // 5. Argmax on int8 output (no dequantization needed for class selection)
+  // 5. Argmax on int8 output — track both best and second-best for margin
   int8_t *output = tflOutput->data.int8;
   int bestClass = 0;
   int8_t bestVal = output[0];
+  int8_t secondBestVal = INT8_MIN;
   for (int i = 1; i < kNumClasses; i++) {
     if (output[i] > bestVal) {
+      secondBestVal = bestVal;
       bestVal = output[i];
       bestClass = i;
+    } else if (output[i] > secondBestVal) {
+      secondBestVal = output[i];
     }
   }
+  // Seed secondBestVal if only one class exists (kNumClasses == 1)
+  if (secondBestVal == INT8_MIN) secondBestVal = bestVal;
 
   // 6. Dequantize winning class for confidence score
   float confidence = ((float)bestVal - kOutputZeroPoint) * kOutputScale;
   // Clamp to [0, 1] (dequant can occasionally exceed due to quantization error)
-  if (confidence < 0.0f)
-    confidence = 0.0f;
-  if (confidence > 1.0f)
-    confidence = 1.0f;
+  if (confidence < 0.0f) confidence = 0.0f;
+  if (confidence > 1.0f) confidence = 1.0f;
+
+  // 6b. Phase 3C — compute classification margin (top1 - top2 in probability space)
+  float secondConfidence = ((float)secondBestVal - kOutputZeroPoint) * kOutputScale;
+  if (secondConfidence < 0.0f) secondConfidence = 0.0f;
+  if (secondConfidence > 1.0f) secondConfidence = 1.0f;
+  float margin = confidence - secondConfidence;
+
+  // 6c. Shadow-mode: flag as unknown candidate when confidence OR margin is too low
+  //     Two-gate rule: uncertain about the class OR uncertain vs. next-best class
+  bool unknownCandidate = (confidence < 0.60f) || (margin < 0.15f);
 
   lastPredictedClass = bestClass;
   lastConfidence = confidence;
+  lastClassificationMargin = margin;
+  lastUnknownCandidate = unknownCandidate;
   lastTotalLatencyMs = millis() - pipelineStart;
 
-  // 7. Log inference result
+  // 7. Log inference result (includes Phase 3C shadow-mode fields)
   Serial.printf(
-      "[INF] %s (%.0f%%)  |  feat=%lums  infer=%lums  total=%lums  free=%d  |  RMS: X=%.2f, Y=%.2f, Z=%.2f\n",
-      kFaultLabels[bestClass], confidence * 100.0f, lastFeatureUs / 1000,
-      lastInferenceUs / 1000, lastTotalLatencyMs, ESP.getFreeHeap(),
+      "[INF] %s (%.0f%%)  margin=%.2f  unk=%d  |  feat=%luus  infer=%luus  total=%lums  free=%d  |  RMS: X=%.2f Y=%.2f Z=%.2f\n",
+      kFaultLabels[bestClass], confidence * 100.0f, margin, (int)unknownCandidate,
+      lastFeatureUs, lastInferenceUs, lastTotalLatencyMs, ESP.getFreeHeap(),
       features[3], features[10], features[17]);
 
   static int candidateClass = -1;

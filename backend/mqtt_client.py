@@ -123,6 +123,12 @@ async def process_heartbeat(payload: HeartbeatPayload):
         gps_fix=s.gps_fix or False,
         gps_satellites=s.gps_satellites,
         gps_simulated=s.gps_simulated or False,
+        dht_success=payload.dht_success,
+        dht_failure=payload.dht_failure,
+        motion_state=payload.current_state,
+        confidence=payload.confidence,
+        unknown_candidate=payload.unknown_candidate or False,
+        classification_margin=payload.classification_margin,
     )
     logger.debug(f"Heartbeat logged for {payload.device_id}")
 

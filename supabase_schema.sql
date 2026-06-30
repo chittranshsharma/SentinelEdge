@@ -20,6 +20,14 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
   gps_lat         FLOAT,
   gps_lng         FLOAT,
   gps_fix         BOOLEAN     DEFAULT FALSE,
+  gps_satellites  INTEGER,
+  gps_simulated   BOOLEAN     DEFAULT FALSE,
+  dht_success     INTEGER     DEFAULT 0,
+  dht_failure     INTEGER     DEFAULT 0,
+  motion_state          TEXT,
+  confidence            FLOAT,
+  unknown_candidate     BOOLEAN     DEFAULT FALSE,
+  classification_margin FLOAT,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -81,19 +89,37 @@ ALTER TABLE anomalies       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts          ENABLE ROW LEVEL SECURITY;
 
 -- Anon can read all tables (dashboard)
+-- DROP first so this block is safe to re-run (Postgres has no CREATE POLICY IF NOT EXISTS)
+DROP POLICY IF EXISTS "Allow anon read on sensor_readings" ON sensor_readings;
 CREATE POLICY "Allow anon read on sensor_readings"
   ON sensor_readings FOR SELECT TO anon USING (true);
 
+DROP POLICY IF EXISTS "Allow anon read on anomalies" ON anomalies;
 CREATE POLICY "Allow anon read on anomalies"
   ON anomalies FOR SELECT TO anon USING (true);
 
+DROP POLICY IF EXISTS "Allow anon read on alerts" ON alerts;
 CREATE POLICY "Allow anon read on alerts"
   ON alerts FOR SELECT TO anon USING (true);
 
 -- ── Realtime ──────────────────────────────────────────────────────────────────
 -- Enable realtime replication for live dashboard updates.
--- Run in Supabase Dashboard: Table Editor → sensor_readings → Enable Realtime
--- Or programmatically:
+-- Wrapped in DO blocks so this is safe to re-run (no IF NOT EXISTS for publications).
 
-ALTER PUBLICATION supabase_realtime ADD TABLE sensor_readings;
-ALTER PUBLICATION supabase_realtime ADD TABLE anomalies;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'sensor_readings'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE sensor_readings;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'anomalies'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE anomalies;
+  END IF;
+END $$;

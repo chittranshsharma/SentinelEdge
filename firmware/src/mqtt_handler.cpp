@@ -50,6 +50,10 @@ static void wifiConnect(const char* ssid, const char* password) {
 static bool mqttReconnect() {
     if (mqttClient.connected()) return true;
 
+    if (WiFi.status() != WL_CONNECTED) {
+        return false;
+    }
+
     unsigned long now = millis();
     if (now - lastReconnectAttempt < RECONNECT_INTERVAL_MS) return false;
     lastReconnectAttempt = now;
@@ -120,8 +124,16 @@ static void buildSensorsObject(JsonObject sensorsObj, const SensorSnapshot& s) {
     sensorsObj["accel_rms_x"]     = serialized(String(s.accelRmsX, 3));
     sensorsObj["accel_rms_y"]     = serialized(String(s.accelRmsY, 3));
     sensorsObj["accel_rms_z"]     = serialized(String(s.accelRmsZ, 3));
-    sensorsObj["temperature"]     = serialized(String(s.temperature, 1));
-    sensorsObj["humidity"]        = serialized(String(s.humidity, 1));
+    if (isnan(s.temperature)) {
+        sensorsObj["temperature"] = nullptr;
+    } else {
+        sensorsObj["temperature"] = serialized(String(s.temperature, 1));
+    }
+    if (isnan(s.humidity)) {
+        sensorsObj["humidity"] = nullptr;
+    } else {
+        sensorsObj["humidity"] = serialized(String(s.humidity, 1));
+    }
     sensorsObj["air_quality_raw"] = s.airQualityRaw;
     sensorsObj["gps_lat"]         = serialized(String(s.gpsLat, 6));
     sensorsObj["gps_lng"]         = serialized(String(s.gpsLng, 6));
@@ -150,6 +162,8 @@ void publishAnomaly(
     doc["fault_class"]          = faultClass;
     doc["fault_label"]          = FAULT_LABELS[faultClass];
     doc["confidence"]           = serialized(String(confidence, 3));
+    doc["classification_margin"]= serialized(String(sensors.classificationMargin, 3));
+    doc["unknown_candidate"]    = sensors.unknownCandidate;
     doc["inference_latency_ms"] = inferenceLatencyMs;
 
     JsonObject s = doc["sensors"].to<JsonObject>();
@@ -172,12 +186,17 @@ void publishHeartbeat(const SensorSnapshot& sensors, int currentState) {
     if (!mqttClient.connected()) return;
 
     JsonDocument doc;
-    doc["device_id"]     = _deviceId;
-    doc["type"]          = "heartbeat";
-    doc["timestamp"]     = sensors.timestampEpoch;
-    doc["uptime_ms"]     = millis();
-    doc["free_heap"]     = ESP.getFreeHeap();
-    doc["current_state"] = FAULT_LABELS[currentState];
+    doc["device_id"]            = _deviceId;
+    doc["type"]                  = "heartbeat";
+    doc["timestamp"]             = sensors.timestampEpoch;
+    doc["uptime_ms"]             = millis();
+    doc["free_heap"]             = ESP.getFreeHeap();
+    doc["dht_success"]           = sensors.dhtSuccess;
+    doc["dht_failure"]           = sensors.dhtFailure;
+    doc["current_state"]         = FAULT_LABELS[currentState];
+    doc["confidence"]           = serialized(String(sensors.confidence, 3));
+    doc["classification_margin"]= serialized(String(sensors.classificationMargin, 3));
+    doc["unknown_candidate"]    = sensors.unknownCandidate;
 
     JsonObject s = doc["sensors"].to<JsonObject>();
     buildSensorsObject(s, sensors);
@@ -185,7 +204,10 @@ void publishHeartbeat(const SensorSnapshot& sensors, int currentState) {
     char payload[512];
     size_t len = serializeJson(doc, payload, sizeof(payload));
 
-    mqttClient.publish(TOPIC_HEARTBEAT, payload, false);
-    // Not logging to Serial to avoid 5s spam — uncomment for debugging:
-    // Serial.printf("[MQTT] Heartbeat: %zu bytes\n", len);
+    bool ok = mqttClient.publish(TOPIC_HEARTBEAT, payload, false);
+    if (ok) {
+        Serial.printf("[MQTT] Heartbeat published — %zu bytes (buf=1024)\n", len);
+    } else {
+        Serial.printf("[MQTT] Heartbeat publish FAILED (payload=%zu bytes, buf=1024)\n", len);
+    }
 }

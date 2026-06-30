@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 import mqtt_client as mqtt
 from supabase_client import get_client
+import analytics_routes
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -77,9 +78,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],   # Tighten for production
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+app.include_router(analytics_routes.router)
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────

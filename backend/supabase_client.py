@@ -53,6 +53,12 @@ async def write_sensor_reading(
     gps_fix: bool = False,
     gps_satellites: Optional[int] = None,
     gps_simulated: bool = False,
+    dht_success: Optional[int] = None,
+    dht_failure: Optional[int] = None,
+    motion_state: Optional[str] = None,
+    confidence: Optional[float] = None,
+    unknown_candidate: Optional[bool] = False,
+    classification_margin: Optional[float] = None,
 ) -> Optional[str]:
     """
     Insert a row into sensor_readings.
@@ -62,20 +68,39 @@ async def write_sensor_reading(
     try:
         client = get_client()
         record = {
-            "device_id":       device_id,
-            "timestamp":       epoch_to_datetime(timestamp_epoch),
-            "temperature":     temperature,
-            "humidity":        humidity,
-            "air_quality_raw": air_quality_raw,
-            "accel_rms_x":     accel_rms_x,
-            "accel_rms_y":     accel_rms_y,
-            "gps_lat":         gps_lat,
-            "gps_lng":         gps_lng,
-            "gps_fix":         gps_fix,
-            "gps_satellites":  gps_satellites,
-            "gps_simulated":   gps_simulated,
+            "device_id":             device_id,
+            "timestamp":             epoch_to_datetime(timestamp_epoch),
+            "temperature":           temperature,
+            "humidity":              humidity,
+            "air_quality_raw":       air_quality_raw,
+            "accel_rms_x":           accel_rms_x,
+            "accel_rms_y":           accel_rms_y,
+            "accel_rms_z":           accel_rms_z,
+            "gps_lat":               gps_lat,
+            "gps_lng":               gps_lng,
+            "gps_fix":               gps_fix,
+            "gps_satellites":        gps_satellites,
+            "gps_simulated":         gps_simulated,
+            "dht_success":           dht_success,
+            "dht_failure":           dht_failure,
+            "motion_state":          motion_state,
+            "confidence":            confidence,
+            "unknown_candidate":     unknown_candidate,
+            "classification_margin": classification_margin,
         }
-        result = client.table("sensor_readings").insert(record).execute()
+        try:
+            result = client.table("sensor_readings").insert(record).execute()
+        except Exception as e:
+            err_msg = str(e)
+            columns_to_strip = ["dht_success", "dht_failure", "motion_state", "confidence", "unknown_candidate", "classification_margin"]
+            if any(col in err_msg for col in columns_to_strip):
+                logger.warning("Extended telemetry or health columns not found in database; trying fallback insertion...")
+                record_fallback = record.copy()
+                for col in columns_to_strip:
+                    record_fallback.pop(col, None)
+                result = client.table("sensor_readings").insert(record_fallback).execute()
+            else:
+                raise e
         row_id = result.data[0]["id"] if result.data else None
         logger.debug(f"sensor_reading inserted: {row_id}")
         return row_id

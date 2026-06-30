@@ -11,6 +11,11 @@ export default function DashboardPage() {
   const [anomalies, setAnomalies]   = useState<Anomaly[]>([])
   const [lastReading, setLastReading] = useState<SensorReading | null>(null)
   const [loading, setLoading]         = useState(true)
+  
+  // Client-side calculations to avoid hydration mismatch
+  const [mounted, setMounted] = useState(false)
+  const [deviceOnline, setDeviceOnline] = useState(false)
+  const [lastSeenTime, setLastSeenTime] = useState('')
 
   // ── Initial data fetch ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -34,6 +39,20 @@ export default function DashboardPage() {
     }
     fetchInitial()
   }, [])
+
+  // Update status state on client
+  useEffect(() => {
+    setMounted(true)
+    if (!lastReading) return
+    const update = () => {
+      const isOnline = new Date().getTime() - new Date(lastReading.created_at).getTime() < 120000
+      setDeviceOnline(isOnline)
+      setLastSeenTime(new Date(lastReading.created_at).toLocaleTimeString())
+    }
+    update()
+    const timer = setInterval(update, 5000)
+    return () => clearInterval(timer)
+  }, [lastReading])
 
   // ── Realtime: anomalies INSERT ─────────────────────────────────────────────
   useEffect(() => {
@@ -92,18 +111,18 @@ export default function DashboardPage() {
         {/* Card 1: Device Status */}
         <div className="relative rounded-xl border border-gray-800 bg-gradient-to-br from-gray-800/40 to-gray-900/40 p-6 overflow-hidden">
           <div className={`absolute top-4 right-4 w-3 h-3 rounded-full animate-pulse ${
-            lastReading && (new Date().getTime() - new Date(lastReading.timestamp).getTime() < 120000)
+            mounted && lastReading && deviceOnline
               ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]'
               : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'
           }`} />
           <p className="text-sm text-gray-400 font-medium uppercase tracking-wider mb-2">Device Status</p>
           <p className="text-3xl font-bold text-white">
-            {!lastReading ? 'WAITING' : (
-              new Date().getTime() - new Date(lastReading.timestamp).getTime() < 120000 ? 'ONLINE' : 'OFFLINE'
+            {!mounted || !lastReading ? 'WAITING' : (
+              deviceOnline ? 'ONLINE' : 'OFFLINE'
             )}
           </p>
           <p className="text-sm text-gray-500 mt-2">
-            {lastReading ? `Last seen: ${new Date(lastReading.timestamp).toLocaleTimeString()}` : 'No telemetry received'}
+            {!mounted || !lastReading ? 'No telemetry received' : `Last seen: ${lastSeenTime}`}
           </p>
         </div>
 

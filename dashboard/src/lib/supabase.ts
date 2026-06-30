@@ -29,6 +29,8 @@ export interface SensorReading {
   gps_fix:         boolean
   gps_satellites:  number | null
   gps_simulated:   boolean | null
+  dht_success:     number | null
+  dht_failure:     number | null
   created_at:      string
 }
 

@@ -27,12 +27,19 @@ export default function EnvTelemetry({ reading }: { reading: SensorReading | nul
       
       {/* 🌡️ Temperature */}
       <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-800/40 to-gray-900/40 p-6 flex flex-col justify-between">
-        <p className="text-sm text-gray-400 font-medium uppercase tracking-wider">Temperature</p>
+        <div className="flex justify-between items-start">
+          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider">Temperature</p>
+          {reading.dht_success !== null && reading.dht_success > 0 && (
+            <span className="text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full border border-green-800/50">
+              DHT SR: {((reading.dht_success / (reading.dht_success + (reading.dht_failure ?? 0))) * 100).toFixed(1)}%
+            </span>
+          )}
+        </div>
         <div className="mt-2 flex items-baseline gap-2">
           <p className={`text-3xl font-bold ${tempColor}`}>
             {temp !== null ? `${temp.toFixed(1)}°` : '--'}
           </p>
-          <span className="text-gray-500 text-sm">C</span>
+          <span className="text-gray-500 text-sm">{temp !== null ? 'C' : 'Sensor Error'}</span>
         </div>
       </div>
 
@@ -43,6 +50,7 @@ export default function EnvTelemetry({ reading }: { reading: SensorReading | nul
           <p className="text-3xl font-bold text-blue-400">
             {hum !== null ? `${hum.toFixed(1)}%` : '--'}
           </p>
+          <span className="text-gray-500 text-sm">{hum !== null ? '' : 'Sensor Error'}</span>
         </div>
         {/* Progress bar */}
         <div className="mt-4 w-full bg-gray-800 rounded-full h-1.5">
@@ -53,10 +61,10 @@ export default function EnvTelemetry({ reading }: { reading: SensorReading | nul
         </div>
       </div>
 
-      {/* 🔥 Gas Level */}
+      {/* 🌬️ Air Quality Sensor */}
       <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-800/40 to-gray-900/40 p-6 flex flex-col justify-between">
         <div className="flex justify-between items-start">
-          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider mb-2">Gas Level</p>
+          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider mb-2">Air Quality Sensor</p>
           <span className="text-xs text-gray-600 bg-gray-800 px-2 py-0.5 rounded-full">
             Raw: {gasRaw ?? '--'}
           </span>

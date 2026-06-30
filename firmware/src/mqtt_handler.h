@@ -35,6 +35,11 @@ struct SensorSnapshot {
     bool   gpsFix;
     int    gpsSatellites;          // Phase 2: satellite count (0 if unknown)
     bool   gpsSimulated;           // Phase 2: true when GPS_SIMULATION is active
+    uint32_t dhtSuccess;           // DHT11 success count
+    uint32_t dhtFailure;           // DHT11 failure count
+    float  confidence;             // Model classification confidence score
+    bool   unknownCandidate;       // Shadow mode candidate flag
+    float  classificationMargin;   // Top1 - Top2 prediction confidence delta
     unsigned long timestampEpoch;  // Unix timestamp (from GPS or millis() fallback)
 };
 
